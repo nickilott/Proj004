@@ -1,0 +1,57 @@
+---
+title: "Pathways analysis"
+header-includes: #allows you to add in your own Latex packages
+- \usepackage{float} #use the 'float' package
+- \floatplacement{figure}{H} #make every figure with caption = h
+
+output:
+  pdf_document:
+    fig_caption: true
+    keep_tex: true
+    latex_engine: pdflatex
+  html_document:
+    df_print: paged
+urlcolor: blue
+---
+
+```{r setup.pathways, include=FALSE}
+source("config/pathways_config.R")
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(out.extra = '')
+#knitr::opts_chunk$set(fig.pos = 'H')
+knitr::opts_knit$set(root.dir = rootdir)
+```
+
+# Pathways analysis
+
+I have taken up and down-regulated gene sets from the differential expression analysis and looked for pathway enrichment
+using genesets from the [MSigDB](http://software.broadinstitute.org/gsea/msigdb/). Having looked at various sets there
+is very little in the way of pathway enrichment for CPZ regulated genes (either in infection or not). For simplicity I
+am just going to therefore show the pathways that are enriched for the salmonella infection conditions using the HALLMARK
+geneset (version 5.1). This is the bet curated gene set of very well described biological pathways and therefore I think
+is reasonable for showing that we see an expected response to Salmonella.
+
+### HALLMARK gene sets
+
+
+```{r pathways, fig.cap="Significantly enriched HALLMARK pathways in Salmonella infection (up-regulated)", fig.height=8, fig.width=6, echo=FALSE, message=FALSE}
+
+source(pathways.helper)
+
+pathway.table.sal <- read.csv("/gfs/work/nilott/proj004/analysis/rnaseq/enrichments/sal.control.up/hallmarks/h.all.v5.1.symbols.foreground.results", header=T, stringsAsFactors=F, sep="\t")
+p1 <- plotPathways(pathway.table.sal)
+p1 <- p1 + ggtitle("Salmonella vs. Control") + coord_flip()
+ggsave("pathways_sal_vs_control.pdf")
+
+pathway.table.salcpz <- read.csv("/gfs/work/nilott/proj004/analysis/rnaseq/enrichments/salcpz.cpz.up/hallmarks/h.all.v5.1.symbols.foreground.results", header=T, stringsAsFactors=F, sep="\t")
+p2 <- plotPathways(pathway.table.salcpz)
+p2 <- p2 + ggtitle("CPZ + Salmonella vs. CPZ") + coord_flip()
+
+lay <- matrix(c(1,1), c(2,2))
+grid.arrange(grobs=list(p1, p2), layout.matrix=lay)
+ggsave("pathways_salcpz_vs_cpz.pdf")
+
+```
+

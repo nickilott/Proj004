@@ -1,0 +1,474 @@
+---
+title: "Differential Expression Results"
+header-includes: #allows you to add in your own Latex packages
+- \usepackage{float} #use the 'float' package
+- \floatplacement{figure}{H} #make every figure with caption = h
+
+output:
+  pdf_document:
+    fig_caption: true
+    keep_tex: true
+    latex_engine: pdflatex
+  html_document:
+    df_print: paged
+urlcolor: blue
+---
+
+
+```{r setup3, include=FALSE}
+source("config/deseq2_config.R")
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(out.extra = '')
+#knitr::opts_chunk$set(fig.pos = 'H')
+knitr::opts_knit$set(root.dir = rootdir)
+```
+
+# DESeq2 Summary Report (with hisat2 mapping) {#deseq2}
+
+This analysis uses DESeq2 to define differentially regulated genes across conditions. The first section deals
+with DESeq2 quality assessments and the later sections with differentially expressed genes.
+
+## Number of genes detected
+
+This section provides a look at the number of genes detected i.e read count >=1
+
+```{r detected-genes, fig.cap='Number of genes detected in each sample', fig.height=2.5, fig.width=5, echo=FALSE, message=FALSE}
+
+# get helper functions
+source(helper)
+
+# knitr for tables
+library(knitr)
+
+mat <- read.csv(feature.counts, header=T, stringsAsFactors=F, sep="\t", row.names=1)
+colnames(mat) <- gsub("hisat", "", colnames(mat))
+ngenes <- data.frame(colSums(mat >= 1))
+
+# make conditions
+ngenes$cond <- makeConds(rownames(ngenes))
+colnames(ngenes) <- c("ngenes", "cond")
+
+# plot number of genes
+ggplot(ngenes, aes(x=cond, y=ngenes, colour=cond)) + geom_boxplot() + geom_jitter() + theme_bw()
+
+```
+
+### ANOVA of number of genes detected
+
+This is a test of significant differences in the number of genes detected.
+
+```{r sig-difference-in-genes-detected}
+
+summary(aov(ngenes$ngenes~ngenes$cond))
+
+```
+
+\newpage
+
+## Quality control of DESeq2 normalisation procedures
+
+```{r diff-expression, fig.cap='Mean-variance and dispersion estimates from DESeq2', fig.height=4, fig.width=8,  echo=FALSE, message=FALSE}
+
+library(DESeq2)
+library(vsn)
+library(RSQLite)
+library(grid)
+library(gridBase)
+
+####################
+# analysis
+####################
+
+mat <- read.csv(feature.counts, header=T, stringsAsFactors=F, sep="\t", row.names=1)
+
+# hisat suffix remains in colnames so remove this here
+colnames(mat) <- gsub(".hisat", "", colnames(mat))
+
+# add condition as coldata
+coldata <- makeColData(mat)
+
+# add donor to coldata
+donor <- unlist(strsplit(as.character(coldata$sample), "*\\."))
+donor <- donor[seq(3, length(donor), 3)]
+coldata$donor <- donor
+
+# paired data so remove effect of donor in analysis
+dds <- DESeqDataSetFromMatrix(countData = mat,
+                              colData = coldata,
+			      design = ~ donor + condition)
+
+# add features (gene names)
+featureData <- makeFeatureData(annotations.db, mat)
+mcols(dds) <- DataFrame(mcols(dds), featureData)
+
+# filtering > a in at least k samples (i.e. all of one condition)
+keep <- rowSums(counts(dds) >= a) >= k
+dds <- dds[keep,]
+
+# run analysis with donor information as reduced model
+dds.lrt <- DESeq(dds, test="LRT", reduced=~donor)
+res <- results(dds.lrt)
+
+# get transformed counts
+rld <- rlog(dds, blind=TRUE)
+rldf <- data.frame(assay(rld))
+rldf$gene_id <- rownames(rldf)
+
+# write table out
+write.table(rldf, file="genes_rlog.tsv", row.names=F, quote=F, sep="\t")
+
+rld <- read.csv("genes_rlog.tsv", sep="\t", stringsAsFactors=F, header=T)
+rownames(rld) <- rld$gene_id
+rld <- rld[,c(1:ncol(rld)-1)]
+
+
+# plot mean-variance relationship and dispersion
+# estimates
+
+par(mfrow=c(1,2))
+plotMeanSd(rld)
+plotDispEsts(dds.lrt)
+
+```
+
+\newpage
+
+# Principle components analysis
+
+Here we perform principle components analysis on normalised read counts (rlog) from DESeq2. This gives an
+idea of the structure of the data and whether there is an obvious difference between groups.
+
+```{r pca, fig.cap='Principle components analysis', fig.height=15, fig.width=20,  echo=FALSE, message=FALSE}
+
+df <- rld
+pc <- PCA(df)
+pcs <- getPCA(pc)
+
+# plot cumulative proportion
+p1 <- plotCumulativeProportion(pc)
+
+# plot principle components
+p2 <- plotPCA(pc, pcs=c("PC1", "PC2"))
+p3 <- plotPCA(pc, pcs=c("PC1", "PC3"))
+p4 <- plotPCA(pc, pcs=c("PC2", "PC3"))
+
+layout = rbind(c(1,1,1), c(2,3,4))
+grid.arrange(grobs=list(p1,p2,p3,p4), layout_matrix=layout)
+
+```
+PC1 clearly reflects the impact of infection and PC2 the variation between donors. It seems clear from the PCA
+in this experiment that PC3 represents differences between CPZ and control samples (regardless of infection status).
+
+If we do the PCA again but this time removing the effect of donor then we should see the variation due to CPZ
+treatment fall as PC2.
+
+```{r pca.donor, fig.cap="PCA with effect of donor removed", fig.height=5, fig.width=15, message=FALSE, echo=FALSE}
+
+# use limma to remove the batch effect
+library(limma)
+rld.removed <- data.frame(removeBatchEffect(rld, coldata$donor))
+
+pc.removed <- PCA(rld.removed)
+pcs.removed <- getPCA(pc.removed)
+
+# plot principle components
+p5 <- plotPCA(pc.removed, pcs=c("PC1", "PC2"))
+p6 <- plotPCA(pc.removed, pcs=c("PC1", "PC3"))
+p7 <- plotPCA(pc.removed, pcs=c("PC2", "PC3"))
+
+grid.arrange(p5,p6,p7, nrow=1, ncol=3)
+
+```
+
+# Overall differential expression analysis
+
+Here we describe genes that were called as differentially expressed. If there are multiple levels per factor
+then it is an overall test (ANOVA-like) whereas if just two conditions are present then it is the direct contrast.
+The heatmap produced is using data where the effect of donor has been removed from the expression values.
+
+```{r de, fig.cap='Differential expression analysis', fig.height=15, fig.width=10,  echo=FALSE, message=FALSE}
+
+library(gplots)
+
+res2 <- getResultsTable(res, featureData)
+
+# subset for genes that are differentially regulated
+res.diff <- res2[res2$padj < 0.05 & !(is.na(res2$padj)) & !(is.na(res2$log2FoldChange)),]
+
+# get number different
+ndiff <- nrow(res.diff)
+df <- data.frame("Number DE" = ndiff)
+kable(df, caption="number of genes differentially expressed at p < 0.05")
+
+# get differentially expressed gene ids
+diffgenes <- res.diff$gene_id
+diff <- rld.removed[diffgenes, ]
+
+# heatmap differences
+heatmapMatrix(diff)
+
+# table the top 50
+toshow <- res.diff[order(res.diff$padj, decreasing=F),][1:50,]
+kable(toshow, caption="top 50 differentially expressed genes by adjusted pvalue", row.names=F)
+
+```
+
+# Pattern of regulation in the top genes
+
+As the analysis was done ANOVA style we don't clearly know (without specifying the contrasts) the pattern of regulation
+of these genes. Here we plot the top (20) genes to see what the pattern is. The expression values again after the
+removal of the effect of donor.
+
+```{r goi, fig.cap='Expression pattern in top 20 genes', fig.height=15, fig.width=15,  echo=FALSE, message=FALSE}
+
+# get gene names
+rld2 <- rld.removed
+
+# get rid of any weird duplicates
+res.diff <- res.diff[!(duplicated(res.diff$gene_name)),]
+res.diff <- res.diff[order(res.diff$padj, decreasing=F),]
+
+# make gene names the rownames
+rld2 <- rld2[rownames(res.diff),]
+rownames(rld2) <- res.diff[rownames(rld2),]$gene_name
+
+# collect grobs for figure
+grob.list <- list()
+for (i in 1:20){
+    goi <- rownames(rld2)[i]
+    p <- plotGOI(rld2, goi=goi)
+    grob.list[[i]] <- p
+    }
+
+grid.arrange(grobs=grob.list, ncol=4, nrow=5)
+
+```
+\newpage
+
+# Specific contrasts
+
+Contrasts of interest in this experiment are Salmonella vs. Control (CPZ+ and CPZ-) as well as CPZ vs Control (Salmonella+ and Salmonella-).
+Here we perform these specific contrasts to get an idea of differentially expressed genes.
+
+```{r contrasts, fig.cap='MA plot for each contrast', fig.height=8, fig.width=14,  echo=FALSE, message=FALSE}
+
+#########################################
+# get contrasts (Salmonella vs. Control)
+#########################################
+
+dds.sal.control <- dds[,1:8]
+dds.sal.control$condition <- droplevels(dds.sal.control$condition)
+dds.sal.control$condition <- factor(dds.sal.control$condition, levels=c("Control", "Salmonella"))
+dds.sal.control <- DESeq(dds.sal.control, test="LRT", reduced=~donor)
+res.sal.control <- results(dds.sal.control)
+
+##############################
+# Sal + CPZ vs CPZ 
+##############################
+
+dds.salcpz.cpz <- dds[,9:16]
+dds.salcpz.cpz$condition <- droplevels(dds.salcpz.cpz$condition)
+dds.salcpz.cpz$condition <- factor(dds.salcpz.cpz$condition, levels=c("cpz", "cpzSalmonella"))
+dds.salcpz.cpz <- DESeq(dds.salcpz.cpz, test="LRT", reduced=~donor)
+res.salcpz.cpz <- results(dds.salcpz.cpz)
+
+
+##############################
+# Sal + CPZ vs control 
+##############################
+
+dds.salcpz.control <- dds[,c(1:4, 13:16)]
+dds.salcpz.control$condition <- droplevels(dds.salcpz.control$condition)
+dds.salcpz.control$condition <- factor(dds.salcpz.control$condition, levels=c("Control", "cpzSalmonella"))
+dds.salcpz.control <- DESeq(dds.salcpz.control, test="LRT", reduced=~donor)
+res.salcpz.control <- results(dds.salcpz.control)
+
+#############################
+# CPZ vs. Control
+#############################
+
+dds.cpz.control <- dds[,c(1:4,9:12)]
+dds.cpz.control$condition <- droplevels(dds.cpz.control$condition)
+dds.cpz.control$condition <- factor(dds.cpz.control$condition, levels=c("Control", "cpz"))
+dds.cpz.control <- DESeq(dds.cpz.control, test="LRT", reduced=~donor)
+res.cpz.control <- results(dds.cpz.control)
+
+#############################
+# CPZSal vs. Sal
+#############################
+
+dds.salcpz.sal <- dds[,c(5:8,13:16)]
+dds.salcpz.sal$condition <- droplevels(dds.salcpz.sal$condition)
+dds.salcpz.sal$condition <- factor(dds.salcpz.sal$condition, levels=c("Salmonella", "cpzSalmonella"))
+dds.salcpz.sal <- DESeq(dds.salcpz.sal, test="LRT", reduced=~donor)
+res.salcpz.sal <- results(dds.salcpz.sal)
+
+
+###############################
+# compare fold changes between
+# both salmonella (+/-CPZ) vs
+# control to see enhancement
+# of salmonella response
+###############################
+
+dat <- data.frame(sal.control = res.sal.control$log2FoldChange,
+                  salcpz.control = res.salcpz.control$log2FoldChange,
+		  cpz.control = res.cpz.control$log2FoldChange,
+		  salcpz.cpz = res.salcpz.cpz$log2FoldChange,
+		  salcpz.sal = res.salcpz.sal$log2FoldChange)
+dat$significant <- ifelse(res.sal.control$padj < 0.05, "yes", "no")
+
+cor1 <- cor(dat$sal.control, dat$salcpz.control, use="pairwise.complete.obs")
+
+p1 <- ggplot(dat, aes(x=sal.control, y=salcpz.control, colour=significant))
+p2 <- p1 + geom_point(pch=18, size=0.5)
+p3 <- p2 + xlab("log2(Fold change) Salmonella vs. Control")
+p4 <- p3 + ylab("log2(Fold change) Salmonella + CPZ vs. Control")
+p5 <- p4 + theme_bw()
+p6 <- p5 + geom_abline(intercept=0, slope=1)
+p7 <- p6 + geom_abline(intercept=1, slope=1, linetype="dashed")
+p8 <- p7 + geom_abline(intercept=-1, slope=1, linetype="dashed")
+p9 <- p8 + scale_colour_manual(values=c("grey", "red4"))
+p10 <- p9 + annotate(geom="text", label=paste("r=", round(cor1,2), sep=""), x=5, y=15)
+ggsave("scatterplot_salmonella_foldchanges.pdf")
+
+
+###
+# fold change comparison between Salmonella vs. Control and CPZ vs. control
+###
+
+cor2 <- cor(dat$sal.control, dat$cpz.control, use="pairwise.complete.obs")
+p1 <- ggplot(dat, aes(x=sal.control, y=cpz.control, colour=significant))
+p2 <- p1 + geom_point(pch=18, size=0.5)
+p3 <- p2 + xlab("log2(Fold change) Salmonella vs. Control")
+p4 <- p3 + ylab("log2(Fold change) CPZ vs. Control")
+p5 <- p4 + theme_bw()
+p6 <- p5 + geom_smooth(data=dat, aes(x=salcpz.cpz, y=salcpz.sal),method="lm", inherit.aes=F, colour="black")
+p7 <- p6 + scale_colour_manual(values=c("grey", "red4"))
+p8 <- p7 + annotate(geom="text", label=paste("r=", round(cor2,2), sep=""), x=5, y=15)
+ggsave("scatterplot_cpz_foldchanges.pdf")
+
+
+###
+# fold change comparison between Salmonella + CPZ vs. CPZ and Salmonella + CPZ vs. Salmonella
+###
+
+cor3 <- cor(dat$salcpz.cpz, dat$salcpz.sal, use="pairwise.complete.obs")
+p1 <- ggplot(dat, aes(x=salcpz.cpz, y=salcpz.sal, colour=significant))
+p2 <- p1 + geom_point(pch=18, size=0.5)
+p3 <- p2 + xlab("log2(Fold change) Salmonella + CPZ vs. CPZ")
+p4 <- p3 + ylab("log2(Fold change) Salmonella + CPZ vs. Salmonella")
+p5 <- p4 + theme_bw()
+p6 <- p5 + geom_smooth(data=dat, aes(x=salcpz.cpz, y=salcpz.sal),method="lm", inherit.aes=F, colour="black")
+p7 <- p6 + scale_colour_manual(values=c("grey", "red4"))
+p8 <- p7 + annotate(geom="text", label=paste("r=", round(cor3,2), sep=""), x=5, y=15)
+ggsave("scatterplot_salmonellacpz_foldchanges.pdf")
+
+####################
+# full set from LRT
+####################
+
+lrt.set <- diffgenes
+
+p1 <- MAPlot(res.sal.control, lfc=lfc, test.in=T, test.set=lrt.set, title="Sal vs. Control")
+ggsave("sal.control.ma.pdf")
+p2 <- MAPlot(res.salcpz.cpz, lfc=lfc, test.in=T, test.set=lrt.set, title="Sal + CPZ vs. CPZ")
+ggsave("salcpz.cpz.ma.pdf")
+p3 <- MAPlot(res.cpz.control, lfc=lfc, test.in=T, test.set=lrt.set, title="CPZ vs. Control")
+ggsave("cpz.control.ma.pdf")
+p4 <- MAPlot(res.salcpz.sal, lfc=lfc, test.in=T, test.set=lrt.set, title="Sal + CPZ vs. Sal")
+ggsave("salcpz.sal.ma.pdf")
+
+grid.arrange(p1,p2,p3,p4, nrow=2, ncol=2)
+
+# write out lists
+sal.control.diff <- getResultsTable(res.sal.control, featureData)
+sal.control.diff <- sal.control.diff[sal.control.diff$padj < 0.05 & abs(sal.control.diff$log2FoldChange) > lfc & !(is.na(sal.control.diff$padj)) & !(is.na(sal.control.diff$log2FoldChange)) & sal.control.diff$gene_id %in% lrt.set, ]
+
+salcpz.cpz.diff <- getResultsTable(res.salcpz.cpz, featureData)
+salcpz.cpz.diff <- salcpz.cpz.diff[salcpz.cpz.diff$padj < 0.05 & abs(salcpz.cpz.diff$log2FoldChange) > lfc & !(is.na(salcpz.cpz.diff$padj)) & !(is.na(salcpz.cpz.diff$log2FoldChange)) & salcpz.cpz.diff$gene_id %in% lrt.set, ]
+
+cpz.control.diff <- getResultsTable(res.cpz.control, featureData)
+cpz.control.diff <- cpz.control.diff[cpz.control.diff$padj < 0.05 & abs(cpz.control.diff$log2FoldChange) > lfc & !(is.na(cpz.control.diff$padj)) & !(is.na(cpz.control.diff$log2FoldChange)) & cpz.control.diff$gene_id %in% lrt.set, ]
+
+salcpz.sal.diff <- getResultsTable(res.salcpz.sal, featureData)
+salcpz.sal.diff <- salcpz.sal.diff[salcpz.sal.diff$padj < 0.05 & abs(salcpz.sal.diff$log2FoldChange) > lfc & !(is.na(salcpz.sal.diff$padj)) & !(is.na(salcpz.sal.diff$log2FoldChange)) & salcpz.sal.diff$gene_id %in% lrt.set, ]
+
+sal.control.up <- sal.control.diff$gene_name[sal.control.diff$log2FoldChange > lfc]
+sal.control.dn <- sal.control.diff$gene_name[sal.control.diff$log2FoldChange < (-lfc)]
+
+salcpz.cpz.up <- salcpz.cpz.diff$gene_name[salcpz.cpz.diff$log2FoldChange > lfc]
+salcpz.cpz.dn <- salcpz.cpz.diff$gene_name[salcpz.cpz.diff$log2FoldChange < (-lfc)]
+
+cpz.control.up <- cpz.control.diff$gene_name[cpz.control.diff$log2FoldChange > lfc]
+cpz.control.dn <- cpz.control.diff$gene_name[cpz.control.diff$log2FoldChange < (-lfc)]
+
+salcpz.sal.up <- salcpz.sal.diff$gene_name[salcpz.sal.diff$log2FoldChange > lfc]
+salcpz.sal.dn <- salcpz.sal.diff$gene_name[salcpz.sal.diff$log2FoldChange < (-lfc)]
+
+######
+# write
+
+write.table(sal.control.up, file="../data/sal.control.up.tsv", sep="\t", row.names=F, col.names=F, quote=F)
+write.table(sal.control.dn, file="../data/sal.control.dn.tsv", sep="\t", row.names=F, col.names=F, quote=F)
+
+write.table(salcpz.cpz.up, file="../data/salcpz.cpz.up.tsv", sep="\t", row.names=F, col.names=F, quote=F)
+write.table(salcpz.cpz.dn, file="../data/salcpz.cpz.dn.tsv", sep="\t", row.names=F, col.names=F, quote=F)
+
+write.table(cpz.control.up, file="../data/cpz.control.up.tsv", sep="\t", row.names=F, col.names=F, quote=F)
+write.table(cpz.control.dn, file="../data/cpz.control.dn.tsv", sep="\t", row.names=F, col.names=F, quote=F)
+
+write.table(salcpz.sal.up, file="../data/salcpz.sal.up.tsv", sep="\t", row.names=F, col.names=F, quote=F)
+write.table(salcpz.sal.dn, file="../data/salcpz.sal.dn.tsv", sep="\t", row.names=F, col.names=F, quote=F)
+
+# background file
+features <- makeFeatureData(annotations.db, rld)
+write.table(as.character(features$gene_name), file="../data/background.tsv", sep="\t", col.names=F, row.names=F, quote=F)
+
+###########################################
+# write out differentially expressed data
+###########################################
+
+write.table(sal.control.diff, file="../data/sal_vs_control.diff", sep="\t", row.names=F, quote=F)
+write.table(salcpz.cpz.diff, file="../data/salcpz_vs_cpz.diff", sep="\t", row.names=F, quote=F)
+write.table(cpz.control.diff, file="../data/cpz_vs_control.diff", sep="\t", row.names=F, quote=F)
+write.table(salcpz.sal.diff, file="../data/salcpz_vs_sal.diff", sep="\t", row.names=F, quote=F)
+
+```
+
+\newpage
+
+# Genes of interest
+
+Given the structure of the data and the increased ability of CPZ-treated macrophages to kill Salmonella it is of
+interest to see if CPZ upregulates genes that are part of the classic Salmonella response. To look at this
+I have taken genes that are up-regulated in the Salmonella vs. Control comparison and intersected this set with
+the set of genes up-regulated in CPZ vs. Control. Genes that are not different between CPZ and Control in infection
+are kept.
+
+```{r intersection, fig.cap="Salmonella-inducible genes regulated by CPZ in steady state", fig.height=9, fig.width=12, echo=FALSE, message=FALSE}
+
+gois <- intersect(sal.control.up, cpz.control.up)
+gois <- setdiff(gois, salcpz.cpz.up)
+gois <- setdiff(gois, salcpz.cpz.dn)
+
+
+kable(data.frame("Total" = length(gois)))
+
+# collect grobs for figure
+grob.list <- list()
+for (i in 1:length(gois)){
+    goi <- gois[i]
+    p <- plotGOI(rld2, goi=goi)
+    grob.list[[i]] <- p
+    }
+
+grid.arrange(grobs=grob.list, ncol=4, nrow=4)
+
+
+```
+
+
+

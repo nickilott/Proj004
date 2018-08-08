@@ -1,0 +1,85 @@
+---
+title: "Mapping Results"
+header-includes: #allows you to add in your own Latex packages
+- \usepackage{float} #use the 'float' package
+- \floatplacement{figure}{H} #make every figure with caption = h
+
+output:
+  pdf_document:
+    fig_caption: true
+    keep_tex: true
+    latex_engine: pdflatex
+  html_document:
+    df_print: paged
+urlcolor: blue
+---
+
+```{r setup2, include=FALSE}
+source("config/mapping_config.R")
+source(readstats.helper)
+library("gridExtra")
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(out.extra = '')
+#knitr::opts_chunk$set(fig.pos = 'H')
+knitr::opts_knit$set(root.dir = rootdir)
+```
+
+# Mapping summary
+
+This section deals with mapping results. It plots the total number of reads for each sample, whether this is variable by condition
+and the proportion of reads that mapped. It also considers how many alignments are secondary alignments i.e. non-unique mapping to the
+genome.
+
+## Total number of reads and summary of read counts per condition
+
+```{r readcounts, fig.cap='Total read counts on a per sample and per condition basis', fig.height=3.5, fig.width=6,  echo=FALSE, message=FALSE}
+
+df <- getReadCounts(mapping.db)
+p1 <- plotReadsSummary(df)
+p2 <- plotReadsSummaryByCondition(df)
+grid.arrange(p1,p2, nrow=1, ncol=2)
+```
+
+\newpage
+
+## Mapping summary
+
+```{r mapping, fig.cap='Read mapping stats', fig.height=5, fig.width=10,  echo=FALSE, message=FALSE}
+df2 <- getProportionReadsMapped(bamstats.db)
+p3 <- plotProportionReadsMapped(df2)
+df3 <- getNumberSecondaryAlignments(bamstats.db)
+p4 <- plotNumberSecondaryAlignments(df3)
+grid.arrange(p3,p4, nrow=1, ncol=2)
+
+```
+
+\newpage
+
+# Context statistics
+
+It is often useful to interrogate where the reads from an RNA experiment are going in terms of genomic features. In a regular RNA-seq experiment
+we would expect that reads would map to coding regions (or non-coding exons) and relatively few reads would be present in introns and unannotated
+intergenic regions. This will be different for 3' mRNA-seq where we only sequence from the 3' end of each transcript. In this case it is likely
+that reads will fall predominantly in 3' UTRs or last exons of transcripts.
+
+```{r genomic-context, fig.cap='Genomic context of mapped reads (proportion)', fig.height=10, fig.width=15,  echo=FALSE, message=FALSE}
+
+context.stats <- getContextStats(bamstats.db)
+plotContextStats(context.stats)
+```
+
+\newpage
+
+It is perhaps more informative to look at the coverage of features in the genome i.e. intergenic regions are huge and so we would
+not expect huge coverage of them unless there is significant genomic DNA contamination. Below is the coverage (RPKM) over the
+different features.
+
+```{r genomic-context-rpkm, fig.cap='Genomic context of mapped reads (RPKM)', fig.height=10, fig.width=15,  echo=FALSE, message=FALSE}
+
+# note that the lengths file for the given contexts is calculated outside of any pipeline
+context.coverage <- getContextCoverage(bamstats.db, context.lengths)
+plotContextStats(context.coverage)
+
+```
