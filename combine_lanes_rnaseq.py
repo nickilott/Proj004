@@ -5,13 +5,12 @@
 ##################################################
 ##################################################
 
-from ruffus import *
-
 import itertools
 import glob
 import os
 
-datadir="/gfs/work/nilott/proj004/data/rnaseq"
+cgatdir="/gfs/devel/nilott/py36-v1/cgat-scripts/CGAT/scripts/"
+datadir="/gfs/work/nilott/proj004/data/rnaseq2"
 
 def getSample(filename):
     '''
@@ -33,7 +32,8 @@ def combineAcrossLanes(infiles):
         s2 = getSample(file2)
         s3 = getSample(file3)
         if s1 == s2 == s3:
-            statement = """cat %s %s %s > %s""" % (file1, file2, file3, s1)
+            statement = """zcat %s %s %s | python %s/fastq2fastq.py --method=sort --log=%s.log | gzip > %s""" % (file1, file2, file3, cgatdir, s1, s1)
             os.system(statement)
 
-combineAcrossLanes(glob.glob(os.path.join(datadir, "*.fastq.gz")))
+combineAcrossLanes(glob.glob(os.path.join(datadir, "*.fastq.1.gz")))
+combineAcrossLanes(glob.glob(os.path.join(datadir, "*.fastq.2.gz")))

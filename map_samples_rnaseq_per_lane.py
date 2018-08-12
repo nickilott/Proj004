@@ -45,7 +45,7 @@ def oid2newid(wtid, oid):
 ###############################
 ###############################
 
-def makeLink(datadirs, wtid, newid):
+def makeLinkRead1(datadirs, wtid, newid):
     '''
     create soft link from original file
     to new file name in current directory
@@ -56,8 +56,25 @@ def makeLink(datadirs, wtid, newid):
     for d in datadirs:
         tofind = os.path.join(d, original_fastq)
         if os.path.exists(tofind):
-            os.symlink(tofind, newid + ".fastq.gz")
-        
+            os.symlink(tofind, newid + ".fastq.1.gz")
+
+###############################
+###############################
+###############################
+
+def makeLinkRead2(datadirs, wtid, newid):
+    '''
+    create soft link from original file
+    to new file name in current directory
+    '''
+    original_fastq = wtid + "_2.fastq.gz"
+    
+    # find original file
+    for d in datadirs:
+        tofind = os.path.join(d, original_fastq)
+        if os.path.exists(tofind):
+            os.symlink(tofind, newid + ".fastq.2.gz")
+            
 
 ###############################
 ###############################
@@ -71,8 +88,8 @@ for line in open("/gfs/archive/powrie/proj004/rnaseq/identifiers/identifiers.tsv
     if oid not in sumeets:
         continue
     newid = oid2newid(wtid, oid)
-    makeLink(datadirs, wtid, newid)
-
+    makeLinkRead1(datadirs, wtid, newid)
+    makeLinkRead2(datadirs, wtid, newid)
 
 
 
