@@ -55,7 +55,6 @@ heatmap.2(as.matrix(mat.ntr), trace="none", scale="none", margins=c(15,15), col=
 dev.off()
 
 
-
 ##########################################
 ##########################################
 # human macrophages/monocytes - GSE22373
