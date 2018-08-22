@@ -91,7 +91,7 @@ toplot <- data.frame(t(apply(mat.annotated, 1, scale)))
 colnames(toplot) <- colnames(mat.annotated)
 
 # heatmap
-pdf("heatmap.pdf", height=12, width=10)
+png("heatmap.png", height=12, width=10, units="in", res=300)
 heatmap.2(as.matrix(toplot), trace="none", col=colours, margins=c(15,15), scale="none", ColSideColors=col.anno, labRow=F)
 
 # add legend
