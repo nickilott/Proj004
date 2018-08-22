@@ -36,11 +36,6 @@ Analysis report, `r format(Sys.time(), "%b %d %Y")`
 \setcounter{tocdepth}{2}
 \tableofcontents
 
-\newpage
-
-```{r child = 'readqc.Rmd'}
-```
-
 \FloatBarrier
 \newpage
 
@@ -58,6 +53,7 @@ Analysis report, `r format(Sys.time(), "%b %d %Y")`
 
 ```{r child = 'pathways.Rmd'}
 ```
+
 
 
 

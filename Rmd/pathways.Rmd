@@ -39,19 +39,62 @@ is reasonable for showing that we see an expected response to Salmonella.
 ```{r pathways, fig.cap="Significantly enriched HALLMARK pathways in Salmonella infection (up-regulated)", fig.height=8, fig.width=6, echo=FALSE, message=FALSE}
 
 source(pathways.helper)
+library(ggplot2)
+library(gridExtra)
 
-pathway.table.sal <- read.csv("/gfs/work/nilott/proj004/analysis/rnaseq/enrichments/sal.control.up/hallmarks/h.all.v5.1.symbols.foreground.results", header=T, stringsAsFactors=F, sep="\t")
+pathway.table.sal <- read.csv("/gfs/work/nilott/proj004/analysis/rnaseq/enrichments2/sal.control.up/hallmarks/h.all.v5.1.symbols.foreground.results", header=T, stringsAsFactors=F, sep="\t")
 p1 <- plotPathways(pathway.table.sal)
 p1 <- p1 + ggtitle("Salmonella vs. Control") + coord_flip()
-ggsave("pathways_sal_vs_control.pdf")
+#ggsave("pathways_sal_vs_control.pdf")
 
-pathway.table.salcpz <- read.csv("/gfs/work/nilott/proj004/analysis/rnaseq/enrichments/salcpz.cpz.up/hallmarks/h.all.v5.1.symbols.foreground.results", header=T, stringsAsFactors=F, sep="\t")
-p2 <- plotPathways(pathway.table.salcpz)
-p2 <- p2 + ggtitle("CPZ + Salmonella vs. CPZ") + coord_flip()
+pathway.table.cpz <- read.csv("/gfs/work/nilott/proj004/analysis/rnaseq/enrichments2/cpz.control.up/hallmarks/h.all.v5.1.symbols.foreground.results", header=T, stringsAsFactors=F, sep="\t")
+p2 <- plotPathways(pathway.table.cpz)
+p2 <- p2 + ggtitle("CPZ vs. Control") + coord_flip()
 
-lay <- matrix(c(1,1), c(2,2))
-grid.arrange(grobs=list(p1, p2), layout.matrix=lay)
-ggsave("pathways_salcpz_vs_cpz.pdf")
+pathway.table.salcpz <- read.csv("/gfs/work/nilott/proj004/analysis/rnaseq/enrichments2/cpzSalmonella.salmonella.up/hallmarks/h.all.v5.1.symbols.foreground.results", header=T, stringsAsFactors=F, sep="\t")
+p3 <- plotPathways(pathway.table.salcpz)
+p3 <- p3 + ggtitle("CPZ + Salmonella vs. Control") + coord_flip()
+
+lay <- matrix(c(1,1), c(2,2), c(3,3))
+grid.arrange(grobs=list(p1, p2, p3), layout.matrix=lay)
+
+```
+
+### Genes in TNF pathway regualated by CPZ treamtment
+
+Contrary to previous analysis it appears that there is a significant enrichment of TNFa signalling in CPZ treated macrophages. Here
+we look at which genes these are and their pattern of regulation.
+
+```{r tnf, fig.cap="Regulation of TNF pathway genes", fig.height=12, fig.width=12, echo=FALSE, message=FALSE}
+source("/gfs/devel/nilott/NGSKit/R/pathways_helper.R")
+
+genesets <- read.csv("/gfs/work/nilott/proj004/analysis/rnaseq/enrichments2/cpzSalmonella.salmonella.up/h.all.v5.1.symbols.tsv", header=F, stringsAsFactors = F, sep="\t")
+
+tnf.genes <- getGenesetGenes(genesets, "HALLMARK_TNFA_SIGNALING_VIA_NFKB")
+
+cpz.control.regulated.tnf <- intersect(as.character(cpz.control.up), tnf.genes)
+salcpz.sal.regulated.tnf <- intersect(as.character(salcpz.sal.up), tnf.genes)
+
+# collect grobs for figure
+grob.list <- list()
+for (i in cpz.control.regulated.tnf){
+    goi <- i
+    p <- plotGOI(rld2, goi=goi) + ggtitle("CPZ vs. Control")
+    grob.list[[i]] <- p
+    }
+
+grid.arrange(grobs=grob.list, ncol=3, nrow=3)
+
+# collect grobs for figure
+grob.list <- list()
+for (i in salcpz.sal.regulated.tnf){
+    goi <- i
+    p <- plotGOI(rld2, goi=goi) + ggtitle("Sal + CPZ vs. Sal")
+    grob.list[[i]] <- p
+    }
+
+grid.arrange(grobs=grob.list, ncol=3, nrow=3)
+
 
 ```
 

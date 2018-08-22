@@ -123,6 +123,14 @@ rld <- read.csv("genes_rlog.tsv", sep="\t", stringsAsFactors=F, header=T)
 rownames(rld) <- rld$gene_id
 rld <- rld[,c(1:ncol(rld)-1)]
 
+# write annotations
+rownames(featureData) <- featureData$gene_id
+rld.anno <- rld
+rld.anno$gene_name <- featureData[rownames(rld.anno),]$gene_name
+rld.anno$gene_id <- featureData[rownames(rld.anno),]$gene_id
+
+# write out
+write.table(rld.anno, file="genes_rlog_annotated.tsv", row.names=F, quote=F, sep="\t")
 
 # plot mean-variance relationship and dispersion
 # estimates
@@ -252,7 +260,7 @@ grid.arrange(grobs=grob.list, ncol=4, nrow=5)
 Contrasts of interest in this experiment are Salmonella vs. Control (CPZ+ and CPZ-) as well as CPZ vs Control (Salmonella+ and Salmonella-).
 Here we perform these specific contrasts to get an idea of differentially expressed genes.
 
-```{r contrasts, fig.cap='MA plot for each contrast', fig.height=8, fig.width=14,  echo=FALSE, message=FALSE}
+```{r contrasts, fig.cap='MA plot for each contrast', fig.height=8, fig.width=12,  echo=FALSE, message=FALSE}
 
 #########################################
 # get contrasts (Salmonella vs. Control)
@@ -263,6 +271,10 @@ dds.sal.control$condition <- droplevels(dds.sal.control$condition)
 dds.sal.control$condition <- factor(dds.sal.control$condition, levels=c("Control", "Salmonella"))
 dds.sal.control <- DESeq(dds.sal.control, test="LRT", reduced=~donor)
 res.sal.control <- results(dds.sal.control)
+
+# get the results table and write out
+towrite.sal <- getResultsTable(res.sal.control, featureData )
+write.table(towrite.sal, file="sal_vs_control.result", sep="\t", quote=F, row.names=F)
 
 ##############################
 # Sal + CPZ vs CPZ 
@@ -294,6 +306,10 @@ dds.cpz.control$condition <- droplevels(dds.cpz.control$condition)
 dds.cpz.control$condition <- factor(dds.cpz.control$condition, levels=c("Control", "cpz"))
 dds.cpz.control <- DESeq(dds.cpz.control, test="LRT", reduced=~donor)
 res.cpz.control <- results(dds.cpz.control)
+
+# get the results table and write out
+towrite <- getResultsTable(res.cpz.control, featureData )
+write.table(towrite, file="cpz_vs_control.result", sep="\t", quote=F, row.names=F)
 
 #############################
 # CPZSal vs. Sal
@@ -372,13 +388,13 @@ ggsave("scatterplot_salmonellacpz_foldchanges.pdf")
 
 lrt.set <- diffgenes
 
-p1 <- MAPlot(res.sal.control, lfc=lfc, test.in=T, test.set=lrt.set, title="Sal vs. Control")
+p1 <- MAPlot(res.sal.control, lfc=lfc, test.in=T, test.set=lrt.set, title="Sal vs. Control") + ylim(c(-16,16))
 ggsave("sal.control.ma.pdf")
-p2 <- MAPlot(res.salcpz.cpz, lfc=lfc, test.in=T, test.set=lrt.set, title="Sal + CPZ vs. CPZ")
+p2 <- MAPlot(res.salcpz.cpz, lfc=lfc, test.in=T, test.set=lrt.set, title="Sal + CPZ vs. CPZ") + ylim(c(-16,16))
 ggsave("salcpz.cpz.ma.pdf")
-p3 <- MAPlot(res.cpz.control, lfc=lfc, test.in=T, test.set=lrt.set, title="CPZ vs. Control")
+p3 <- MAPlot(res.cpz.control, lfc=lfc, test.in=T, test.set=lrt.set, title="CPZ vs. Control") + ylim(c(-16,16))
 ggsave("cpz.control.ma.pdf")
-p4 <- MAPlot(res.salcpz.sal, lfc=lfc, test.in=T, test.set=lrt.set, title="Sal + CPZ vs. Sal")
+p4 <- MAPlot(res.salcpz.sal, lfc=lfc, test.in=T, test.set=lrt.set, title="Sal + CPZ vs. Sal") + ylim(c(-16,16))
 ggsave("salcpz.sal.ma.pdf")
 
 grid.arrange(p1,p2,p3,p4, nrow=2, ncol=2)
@@ -465,7 +481,7 @@ for (i in 1:length(gois)){
     grob.list[[i]] <- p
     }
 
-grid.arrange(grobs=grob.list, ncol=4, nrow=4)
+#grid.arrange(grobs=grob.list, ncol=4, nrow=26)
 
 
 ```
